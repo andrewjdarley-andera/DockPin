@@ -9,8 +9,6 @@
 import Cocoa
 import ApplicationServices
 
-let margin: CGFloat = 2  // rows of pixels at the bottom of external displays the cursor can't enter
-
 var externalBounds: [CGRect] = []
 var allBounds: [CGRect] = []
 var tap: CFMachPort?
@@ -27,12 +25,17 @@ func refreshDisplays() {
     CGGetActiveDisplayList(count, &ids, &count)
     ids = Array(ids.prefix(Int(count)))
 
-    allBounds = ids.map { CGDisplayBounds($0) }
+    let all = ids.map { CGDisplayBounds($0) }
     let hasBuiltin = ids.contains { CGDisplayIsBuiltin($0) != 0 }
-    externalBounds = hasBuiltin
+    let external = hasBuiltin
         ? ids.filter { CGDisplayIsBuiltin($0) == 0 }.map { CGDisplayBounds($0) }
         : []
-    log("displays: \(ids.count) active, guarding \(externalBounds.count) external")
+
+    if all != allBounds || external != externalBounds {
+        allBounds = all
+        externalBounds = external
+        log("displays: \(all.count) active, guarding \(external.count) external")
+    }
 }
 
 let eventCallback: CGEventTapCallBack = { _, type, event, _ in
@@ -41,20 +44,10 @@ let eventCallback: CGEventTapCallBack = { _, type, event, _ in
         return Unmanaged.passUnretained(event)
     }
 
-    let p = event.location
-    for r in externalBounds where r.contains(p) {
-        let limit = r.maxY - margin
-        if p.y >= limit {
-            // If another display sits directly below this spot, let the cursor cross into it.
-            let below = CGPoint(x: p.x, y: r.maxY + 1)
-            if allBounds.contains(where: { $0.contains(below) }) { break }
-
-            let q = CGPoint(x: p.x, y: limit - 1)
-            event.location = q
-            CGWarpMouseCursorPosition(q)
-            CGAssociateMouseAndMouseCursorPosition(1)  // avoid the post-warp input freeze
-        }
-        break
+    if let q = clampedLocation(event.location, external: externalBounds, all: allBounds) {
+        event.location = q
+        CGWarpMouseCursorPosition(q)
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
     return Unmanaged.passUnretained(event)
 }
@@ -93,18 +86,19 @@ func disableWarpSuppression() {
     CGEventSource(stateID: .hidSystemState)?.localEventsSuppressionInterval = 0
     typealias SetInterval = @convention(c) (CFTimeInterval) -> CGError
     if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGSetLocalEventsSuppressionInterval") {
-        let result = unsafeBitCast(sym, to: SetInterval.self)(0)
-        log("warp suppression disabled (result \(result.rawValue))")
-    } else {
-        log("CGSetLocalEventsSuppressionInterval not found")
+        _ = unsafeBitCast(sym, to: SetInterval.self)(0)
     }
 }
 
 disableWarpSuppression()
 refreshDisplays()
+
+// Pick up displays being connected, disconnected, or rearranged: immediately
+// via the system callback, with a slow poll as a fallback.
 CGDisplayRegisterReconfigurationCallback({ _, flags, _ in
     if !flags.contains(.beginConfigurationFlag) { refreshDisplays() }
 }, nil)
+Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in refreshDisplays() }
 
 if !AXIsProcessTrusted() {
     log("waiting for Accessibility permission")

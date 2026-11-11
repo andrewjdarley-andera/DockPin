@@ -23,7 +23,7 @@ fi
 echo "==> Building DockPin"
 rm -rf build
 mkdir -p "$BUILD/Contents/MacOS"
-swiftc -O Sources/main.swift -o "$BUILD/Contents/MacOS/DockPin"
+swiftc -O Sources/*.swift -o "$BUILD/Contents/MacOS/DockPin"
 cp Resources/Info.plist "$BUILD/Contents/Info.plist"
 codesign --force --sign - "$BUILD" 2>/dev/null
 
