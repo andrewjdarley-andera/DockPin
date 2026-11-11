@@ -1,6 +1,6 @@
 # DockPin
 
-macOS moves the Dock to your external monitor whenever the cursor touches the bottom of that screen, and has no setting to stop it; DockPin keeps the Dock on your MacBook's built-in display.
+macOS moves the Dock to your external monitor whenever the cursor touches the bottom of that screen, and has no setting to stop it; DockPin keeps the Dock on your MacBook's built-in display by blocking your cursor from reaching the very bottom of your extra displays
 
 ## Setup
 
